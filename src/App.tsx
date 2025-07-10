@@ -3,33 +3,35 @@ import { useState, useEffect } from 'react'
 import LoginScreen from './components/LoginScreen'
 import Dashboard from './components/Dashboard'
 import { ThemeProvider } from './components/ThemeProvider'
-import { createClient, type User } from '@blinkdotnew/sdk'
 
-const blink = createClient({
-  projectId: 'ghost-swarm-console-8wjikier',
-  authRequired: true,
-})
+const USER = {
+  email: 'jenniebell@outlook.com.au',
+  password: 'YellowFrog25'
+}
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const unsubscribe = blink.auth.onAuthStateChanged((state) => {
-      setIsAuthenticated(state.isAuthenticated)
-      setUser(state.user)
-      setLoading(state.isLoading)
-    })
-    return unsubscribe
+    // Check if user is already logged in
+    const authStatus = localStorage.getItem('ghost-swarm-auth')
+    if (authStatus === 'true') {
+      setIsAuthenticated(true)
+    }
   }, [])
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center text-green-400 text-2xl font-bold">
-        Initializing Ghost Swarm Console...
-      </div>
-    )
+  const handleLogin = (email: string, password: string) => {
+    if (email === USER.email && password === USER.password) {
+      setIsAuthenticated(true)
+      localStorage.setItem('ghost-swarm-auth', 'true')
+      return true
+    }
+    return false
+  }
+
+  const handleLogout = () => {
+    setIsAuthenticated(false)
+    localStorage.removeItem('ghost-swarm-auth')
   }
 
   return (
@@ -42,7 +44,7 @@ function App() {
               isAuthenticated ? (
                 <Navigate to="/dashboard" replace />
               ) : (
-                <LoginScreen blink={blink} />
+                <LoginScreen onLogin={handleLogin} />
               )
             } 
           />
@@ -50,7 +52,7 @@ function App() {
             path="/dashboard" 
             element={
               isAuthenticated ? (
-                <Dashboard onLogout={() => blink.auth.logout()} />
+                <Dashboard onLogout={handleLogout} />
               ) : (
                 <Navigate to="/login" replace />
               )

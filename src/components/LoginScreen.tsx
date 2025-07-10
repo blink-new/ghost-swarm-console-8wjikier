@@ -5,13 +5,12 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Eye, EyeOff, Ghost, Terminal, Zap } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { BlinkClient } from '@blinkdotnew/sdk'
 
 interface LoginScreenProps {
-  blink: BlinkClient
+  onLogin: (email: string, password: string) => boolean
 }
 
-export default function LoginScreen({ blink }: LoginScreenProps) {
+export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -21,12 +20,21 @@ export default function LoginScreen({ blink }: LoginScreenProps) {
     e.preventDefault()
     setIsLoading(true)
 
-    try {
-      await blink.auth.login()
-      // The SDK handles redirection on successful login, so no need for toast.success here
-    } catch (error) {
-      console.error('Login failed:', error)
-      toast.error('Login failed. Please try again.', {
+    // Simulate authentication delay
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    const success = onLogin(email, password)
+
+    if (success) {
+      toast.success('Welcome to Ghost Swarm Console 👻', {
+        style: {
+          background: '#0f172a',
+          color: '#00ff9f',
+          border: '1px solid #00ff9f',
+        },
+      })
+    } else {
+      toast.error('Invalid credentials', {
         style: {
           background: '#0f172a',
           color: '#ff0080',
@@ -34,7 +42,7 @@ export default function LoginScreen({ blink }: LoginScreenProps) {
         },
       })
     }
-    
+
     setIsLoading(false)
   }
 
