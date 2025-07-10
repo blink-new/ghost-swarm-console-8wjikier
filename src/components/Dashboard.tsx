@@ -15,11 +15,12 @@ import {
   Clock,
   Users,
   Wifi,
-  WifiOff
+  WifiOff,
+  Settings
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { blink } from '../blink/client'
-import type { User } from '@blinkdotnew/sdk'
+import SettingsDialog from './SettingsDialog'
+import { blink, User } from '../blink/client'
 
 interface Transaction {
   id: string
@@ -33,18 +34,19 @@ interface Transaction {
 
 interface DashboardProps {
   user: User
+  onLogout: () => void
 }
 
 const agentNames = [
   'RefundBot', 'CodeFlip', 'CouponHunter', 'PriceTracker', 'DataMiner',
   'TaskBot', 'ScrapeGhost', 'APIHunter', 'WebCrawler', 'AutoBidder',
   'FlipBot', 'ArbitragePro', 'DealHunter', 'DiscountBot', 'CashBot'
-];
+]
 
 const generateMockTransaction = (): Omit<Transaction, 'id' | 'createdAt' | 'userId'> => {
-  const agentName = agentNames[Math.floor(Math.random() * agentNames.length)];
-  const agentId = `${agentName}_${Math.floor(Math.random() * 99) + 1}`;
-  const amount = Math.random() * 2 + 0.01; // $0.01 to $2.00
+  const agentName = agentNames[Math.floor(Math.random() * agentNames.length)]
+  const agentId = `${agentName}_${Math.floor(Math.random() * 99) + 1}`
+  const amount = Math.random() * 2 + 0.01 // $0.01 to $2.00
   
   return {
     amount: Math.round(amount * 100) / 100,
@@ -52,16 +54,28 @@ const generateMockTransaction = (): Omit<Transaction, 'id' | 'createdAt' | 'user
     time: new Date().toLocaleTimeString(),
     agentId,
     type: 'earning',
-  };
+  }
 }
 
-export default function Dashboard({ user }: DashboardProps) {
+export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [walletBalance, setWalletBalance] = useState(0)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isActivating, setIsActivating] = useState(false)
   const [autoMode, setAutoMode] = useState(false)
   const [activationProgress, setActivationProgress] = useState(0)
   const [activeAgents, setActiveAgents] = useState(0)
+  const [showSettings, setShowSettings] = useState(false)
+  const [settings, setSettings] = useState(() => {
+    const savedSettings = localStorage.getItem('ghost-swarm-settings')
+    return savedSettings ? JSON.parse(savedSettings) : {
+      sendTransactionEmails: true,
+      paypalAddress: ''
+    }
+  })
+
+  useEffect(() => {
+    localStorage.setItem('ghost-swarm-settings', JSON.stringify(settings))
+  }, [settings])
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -182,7 +196,7 @@ export default function Dashboard({ user }: DashboardProps) {
         border: '1px solid #ff0080',
       },
     })
-    blink.auth.logout()
+    onLogout()
   }
 
   return (
@@ -214,6 +228,14 @@ export default function Dashboard({ user }: DashboardProps) {
               <Users className="w-4 h-4" />
               <span>{activeAgents} Active Agents</span>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowSettings(true)}
+              className="text-slate-400 hover:text-green-400"
+            >
+              <Settings className="w-5 h-5" />
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -369,6 +391,12 @@ export default function Dashboard({ user }: DashboardProps) {
           </Card>
         </div>
       </div>
+      <SettingsDialog 
+        open={showSettings} 
+        onOpenChange={setShowSettings} 
+        settings={settings} 
+        onSave={setSettings} 
+      />
     </div>
   )
 }

@@ -4,49 +4,37 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Eye, EyeOff, Ghost, Terminal, Zap } from 'lucide-react'
-import { blink } from '../blink/client'
+import toast from 'react-hot-toast'
+import { BlinkClient } from '@blinkdotnew/sdk'
 
 interface LoginScreenProps {
-  onLogin: (email: string, password: string) => boolean
+  blink: BlinkClient
 }
 
-export default function LoginScreen({ onLogin }: LoginScreenProps) {
+export default function LoginScreen({ blink }: LoginScreenProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  const handleLogin = () => {
-    blink.auth.login()
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
 
-    // Simulate authentication delay
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    const success = onLogin(email, password)
-
-    if (success) {
-      // toast.success('Welcome to Ghost Swarm Console 👻', {
-      //   style: {
-      //     background: '#0f172a',
-      //     color: '#00ff9f',
-      //     border: '1px solid #00ff9f',
-      //   },
-      // })
-    } else {
-      // toast.error('Invalid credentials', {
-      //   style: {
-      //     background: '#0f172a',
-      //     color: '#ff0080',
-      //     border: '1px solid #ff0080',
-      //   },
-      // })
+    try {
+      await blink.auth.login()
+      // The SDK handles redirection on successful login, so no need for toast.success here
+    } catch (error) {
+      console.error('Login failed:', error)
+      toast.error('Login failed. Please try again.', {
+        style: {
+          background: '#0f172a',
+          color: '#ff0080',
+          border: '1px solid #ff0080',
+        },
+      })
     }
-
+    
     setIsLoading(false)
   }
 
@@ -136,21 +124,12 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             </Button>
           </form>
 
-          <Button
-            onClick={handleLogin}
-            className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-black font-semibold shadow-lg shadow-green-500/25 transition-all duration-200 hover:shadow-green-500/40 hover:scale-105"
-          >
-            <div className="flex items-center space-x-2">
-              <Terminal className="w-4 h-4" />
-              <span>Initialize Console</span>
-            </div>
-          </Button>
-
           <div className="text-center text-xs text-slate-500 space-y-1">
             <div className="flex items-center justify-center space-x-1">
               <div className="w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
               <span>System Status: ONLINE</span>
             </div>
+            <div>Authorized user only</div>
           </div>
         </CardContent>
       </Card>

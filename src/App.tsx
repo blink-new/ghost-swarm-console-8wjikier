@@ -3,25 +3,31 @@ import { useState, useEffect } from 'react'
 import LoginScreen from './components/LoginScreen'
 import Dashboard from './components/Dashboard'
 import { ThemeProvider } from './components/ThemeProvider'
-import { blink } from './blink/client'
-import type { User } from '@blinkdotnew/sdk'
+import { createClient } from '@blinkdotnew/sdk'
+
+const blink = createClient({
+  projectId: 'ghost-swarm-console-8wjikier',
+  authRequired: true,
+})
 
 function App() {
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const unsubscribe = blink.auth.onAuthStateChanged((state) => {
+      setIsAuthenticated(state.isAuthenticated)
       setUser(state.user)
-      setIsLoading(state.isLoading)
+      setLoading(state.isLoading)
     })
     return unsubscribe
   }, [])
 
-  if (isLoading) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="w-16 h-16 border-4 border-green-400 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center text-green-400 text-2xl font-bold">
+        Initializing Ghost Swarm Console...
       </div>
     )
   }
@@ -32,11 +38,23 @@ function App() {
         <Routes>
           <Route 
             path="/login" 
-            element={user ? <Navigate to="/dashboard" replace /> : <LoginScreen />} 
+            element={
+              isAuthenticated ? (
+                <Navigate to="/dashboard" replace />
+              ) : (
+                <LoginScreen blink={blink} />
+              )
+            } 
           />
           <Route 
             path="/dashboard" 
-            element={user ? <Dashboard user={user} /> : <Navigate to="/login" replace />} 
+            element={
+              isAuthenticated ? (
+                <Dashboard user={user} onLogout={() => blink.auth.logout()} />
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            } 
           />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
