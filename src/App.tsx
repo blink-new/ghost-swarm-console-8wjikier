@@ -3,35 +3,32 @@ import { useState, useEffect } from 'react'
 import LoginScreen from './components/LoginScreen'
 import Dashboard from './components/Dashboard'
 import { ThemeProvider } from './components/ThemeProvider'
-
-const USER = {
-  email: 'jenniebell@outlook.com.au',
-  password: 'YellowFrog25'
-}
+import { supabase } from './supabase/client'
+import { Session } from '@supabase/supabase-js'
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [session, setSession] = useState<Session | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check if user is already logged in
-    const authStatus = localStorage.getItem('ghost-swarm-auth')
-    if (authStatus === 'true') {
-      setIsAuthenticated(true)
-    }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setLoading(false)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
-  const handleLogin = (email: string, password: string) => {
-    if (email === USER.email && password === USER.password) {
-      setIsAuthenticated(true)
-      localStorage.setItem('ghost-swarm-auth', 'true')
-      return true
-    }
-    return false
-  }
-
-  const handleLogout = () => {
-    setIsAuthenticated(false)
-    localStorage.removeItem('ghost-swarm-auth')
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center text-green-400 text-2xl font-bold">
+        Initializing Ghost Swarm Console...
+      </div>
+    )
   }
 
   return (
@@ -40,23 +37,11 @@ function App() {
         <Routes>
           <Route 
             path="/login" 
-            element={
-              isAuthenticated ? (
-                <Navigate to="/dashboard" replace />
-              ) : (
-                <LoginScreen onLogin={handleLogin} />
-              )
-            } 
+            element={session ? <Navigate to="/dashboard" replace /> : <LoginScreen />} 
           />
           <Route 
             path="/dashboard" 
-            element={
-              isAuthenticated ? (
-                <Dashboard onLogout={handleLogout} />
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            } 
+            element={session ? <Dashboard session={session} /> : <Navigate to="/login" replace />} 
           />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>

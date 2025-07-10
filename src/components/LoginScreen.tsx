@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Eye, EyeOff, Ghost, Terminal, Zap } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { supabase } from '../supabase/client'
 
 interface LoginScreenProps {
   onLogin: (email: string, password: string) => boolean

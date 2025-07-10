@@ -21,6 +21,8 @@ import {
 import toast from 'react-hot-toast'
 import SettingsDialog from './SettingsDialog'
 import AgentLeaderboard, { Agent } from './AgentLeaderboard'
+import { supabase } from '../supabase/client'
+import { Session } from '@supabase/supabase-js'
 
 interface Transaction {
   id: string
@@ -33,7 +35,7 @@ interface Transaction {
 }
 
 interface DashboardProps {
-  onLogout: () => void
+  session: Session
 }
 
 const agentNames = [
@@ -47,7 +49,7 @@ const moneyMakingMethods = [
   'Lead Generation', 'Content Creation', 'Data Annotation', 'Bug Bounty Hunting', 'Affiliate Marketing'
 ]
 
-const generateMockTransaction = (agent: Agent): Omit<Transaction, 'id' | 'createdAt'> => {
+const generateMockTransaction = (agent: Agent): Omit<Transaction, 'id' | 'createdAt' | 'user_id'> => {
   const amount = Math.random() * 2 + 0.01 // $0.01 to $2.00
   
   return {
@@ -59,7 +61,7 @@ const generateMockTransaction = (agent: Agent): Omit<Transaction, 'id' | 'create
   }
 }
 
-export default function Dashboard({ onLogout }: DashboardProps) {
+export default function Dashboard({ session }: DashboardProps) {
   const [walletBalance, setWalletBalance] = useState(0)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isActivating, setIsActivating] = useState(false)
@@ -79,30 +81,54 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     localStorage.setItem('ghost-swarm-settings', JSON.stringify(settings))
   }, [settings])
 
-  const fetchDashboardData = useCallback(() => {
-    // Wallet
-    const storedBalance = parseFloat(localStorage.getItem('ghost-wallet-balance') || '1247.83')
-    setWalletBalance(storedBalance)
+  const fetchDashboardData = useCallback(async () => {
+    const { data: walletData, error: walletError } = await supabase
+      .from('wallets')
+      .select('balance')
+      .eq('user_id', session.user.id)
+      .single()
 
-    // Transactions
-    const storedTx: Transaction[] = JSON.parse(localStorage.getItem('ghost-transactions') || '[]')
-    setTransactions(storedTx)
-
-    // Agents
-    const storedAgents: Agent[] = JSON.parse(localStorage.getItem('ghost-agents') || '[]')
-    if (storedAgents.length > 0) {
-      setAgents(storedAgents)
-    } else {
-      const initialAgents = Array.from({ length: 42 }, (_, i) => ({
-        id: `agent_${i}`,
-        name: `${agentNames[i % agentNames.length]}${i}`,
-        earnings: 0,
-        method: 'Idle'
-      }))
-      setAgents(initialAgents)
-      localStorage.setItem('ghost-agents', JSON.stringify(initialAgents))
+    if (walletError && walletError.code === 'PGRST116') {
+      // Wallet does not exist, create one
+      const { data: newWallet, error: newWalletError } = await supabase
+        .from('wallets')
+        .insert({ user_id: session.user.id, balance: 1247.83 })
+        .select()
+        .single()
+      if (newWalletError) {
+        toast.error(newWalletError.message)
+      } else if (newWallet) {
+        setWalletBalance(newWallet.balance)
+      }
+    } else if (walletError) {
+      toast.error(walletError.message)
+    } else if (walletData) {
+      setWalletBalance(walletData.balance)
     }
-  }, [])
+
+    const { data: transactionsData, error: transactionsError } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (transactionsError) {
+      toast.error(transactionsError.message)
+    } else {
+      setTransactions(transactionsData as Transaction[])
+    }
+
+    // A simple way to get a dynamic number of active agents
+    const agentCount = new Set(transactionsData?.map(tx => tx.agent_id)).size
+    setAgents(Array.from({ length: agentCount > 0 ? agentCount : 42 }, (_, i) => ({
+      id: `agent_${i}`,
+      name: `${agentNames[i % agentNames.length]}${i}`,
+      earnings: 0,
+      method: 'Idle'
+    })))
+
+  }, [session.user.id])
 
   useEffect(() => {
     fetchDashboardData()
@@ -112,24 +138,27 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   useEffect(() => {
     if (!autoMode) return
 
-    const interval = setInterval(() => {
-      setAgents(prevAgents => {
-        const activeAgents = prevAgents.filter(a => a.method !== 'Idle')
-        if (activeAgents.length === 0) return prevAgents
+    const interval = setInterval(async () => {
+      const agentToUpdate = agents[Math.floor(Math.random() * agents.length)]
+      const transaction = generateMockTransaction(agentToUpdate)
+      
+      const { data: newTransaction, error } = await supabase
+        .from('transactions')
+        .insert({ ...transaction, user_id: session.user.id })
+        .select()
+        .single()
 
-        const agentToUpdate = activeAgents[Math.floor(Math.random() * activeAgents.length)]
-        const transaction = generateMockTransaction(agentToUpdate)
-        
-        agentToUpdate.earnings += transaction.amount
-        setWalletBalance(prev => prev + transaction.amount)
-        setTransactions(prevTx => [transaction as unknown as Transaction, ...prevTx.slice(0, 49)])
-
-        return [...prevAgents]
-      })
+      if (error) {
+        toast.error(error.message)
+      } else if (newTransaction) {
+        setTransactions(prev => [newTransaction as Transaction, ...prev.slice(0, 49)])
+        setWalletBalance(prev => prev + newTransaction.amount)
+        await supabase.from('wallets').update({ balance: walletBalance + newTransaction.amount }).eq('user_id', session.user.id)
+      }
     }, 3000 + Math.random() * 4000) // 3-7 seconds
 
     return () => clearInterval(interval)
-  }, [autoMode])
+  }, [autoMode, agents, session.user.id, walletBalance])
 
   // Agent activation sequence
   const activateAgents = useCallback(async () => {
@@ -166,20 +195,27 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         const numTransactions = Math.floor(Math.random() * 4) + 2 // 2-5 transactions
         
         for (let i = 0; i < numTransactions; i++) {
-          setAgents(prevAgents => {
-            const agentToUpdate = prevAgents[Math.floor(Math.random() * prevAgents.length)]
-            if (!agentToUpdate.method || agentToUpdate.method === 'Searching...' || agentToUpdate.method === 'Idle') {
-              agentToUpdate.method = moneyMakingMethods[Math.floor(Math.random() * moneyMakingMethods.length)]
-            }
+          const agentToUpdate = agents[Math.floor(Math.random() * agents.length)]
+          if (!agentToUpdate.method || agentToUpdate.method === 'Searching...' || agentToUpdate.method === 'Idle') {
+            agentToUpdate.method = moneyMakingMethods[Math.floor(Math.random() * moneyMakingMethods.length)]
+          }
 
-            const transaction = generateMockTransaction(agentToUpdate)
-            agentToUpdate.earnings += transaction.amount
+          const transaction = generateMockTransaction(agentToUpdate)
+          agentToUpdate.earnings += transaction.amount
 
-            setWalletBalance(prev => prev + transaction.amount)
-            setTransactions(prevTx => [transaction as unknown as Transaction, ...prevTx.slice(0, 49)])
+          const { data: newTransaction, error } = await supabase
+            .from('transactions')
+            .insert({ ...transaction, user_id: session.user.id })
+            .select()
+            .single()
 
-            return [...prevAgents]
-          })
+          if (error) {
+            toast.error(error.message)
+          } else if (newTransaction) {
+            setTransactions(prev => [newTransaction as Transaction, ...prev.slice(0, 49)])
+            setWalletBalance(prev => prev + newTransaction.amount)
+            await supabase.from('wallets').update({ balance: walletBalance + newTransaction.amount }).eq('user_id', session.user.id)
+          }
           await new Promise(resolve => setTimeout(resolve, 200))
         }
         
@@ -200,15 +236,10 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         },
       })
     }, 1000)
-  }, [agents])
+  }, [agents, session.user.id, walletBalance])
 
-  useEffect(() => {
-    localStorage.setItem('ghost-wallet-balance', walletBalance.toString())
-    localStorage.setItem('ghost-transactions', JSON.stringify(transactions))
-    localStorage.setItem('ghost-agents', JSON.stringify(agents))
-  }, [walletBalance, transactions, agents])
-
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
     toast.success('Ghost session terminated 👻', {
       style: {
         background: '#0f172a',
@@ -216,7 +247,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         border: '1px solid #ff0080',
       },
     })
-    onLogout()
   }
 
   return (
