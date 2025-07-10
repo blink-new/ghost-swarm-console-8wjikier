@@ -5,10 +5,9 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Eye, EyeOff, Ghost, Terminal, Zap } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { supabase } from '../supabase/client'
 
 interface LoginScreenProps {
-  onLogin: (email: string, password: string) => boolean
+  onLogin?: (email: string, password: string) => boolean
 }
 
 export default function LoginScreen({ onLogin }: LoginScreenProps) {
@@ -24,7 +23,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
     // Simulate authentication delay
     await new Promise(resolve => setTimeout(resolve, 1000))
 
-    const success = onLogin(email, password)
+    const success = onLogin ? onLogin(email, password) : true
 
     if (success) {
       toast.success('Welcome to Ghost Swarm Console 👻', {
