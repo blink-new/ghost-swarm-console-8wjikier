@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import LoginScreen from './components/LoginScreen'
 import Dashboard from './components/Dashboard'
 import { ThemeProvider } from './components/ThemeProvider'
-import { createClient } from '@blinkdotnew/sdk'
+import { createClient, type User } from '@blinkdotnew/sdk'
 
 const blink = createClient({
   projectId: 'ghost-swarm-console-8wjikier',
@@ -12,7 +12,7 @@ const blink = createClient({
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -50,7 +50,7 @@ function App() {
             path="/dashboard" 
             element={
               isAuthenticated ? (
-                <Dashboard user={user} onLogout={() => blink.auth.logout()} />
+                <Dashboard onLogout={() => blink.auth.logout()} />
               ) : (
                 <Navigate to="/login" replace />
               )

@@ -20,7 +20,6 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import SettingsDialog from './SettingsDialog'
-import { blink, User } from '../blink/client'
 
 interface Transaction {
   id: string
@@ -33,7 +32,6 @@ interface Transaction {
 }
 
 interface DashboardProps {
-  user: User
   onLogout: () => void
 }
 
@@ -57,7 +55,7 @@ const generateMockTransaction = (): Omit<Transaction, 'id' | 'createdAt' | 'user
   }
 }
 
-export default function Dashboard({ user, onLogout }: DashboardProps) {
+export default function Dashboard({ onLogout }: DashboardProps) {
   const [walletBalance, setWalletBalance] = useState(0)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isActivating, setIsActivating] = useState(false)
@@ -77,35 +75,18 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     localStorage.setItem('ghost-swarm-settings', JSON.stringify(settings))
   }, [settings])
 
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      const [walletData, transactionsData] = await Promise.all([
-        blink.db.wallets.list({ where: { userId: user.id }, limit: 1 }),
-        blink.db.transactions.list({ where: { userId: user.id }, orderBy: { createdAt: 'desc' }, limit: 50 })
-      ])
+  const fetchDashboardData = useCallback(() => {
+    // Wallet
+    const storedBalance = parseFloat(localStorage.getItem('ghost-wallet-balance') || '1247.83')
+    setWalletBalance(storedBalance)
 
-      if (walletData.length > 0) {
-        setWalletBalance(walletData[0].balance)
-      } else {
-        // Create a new wallet if one doesn't exist
-        const newWallet = await blink.db.wallets.create({
-          userId: user.id,
-          balance: 1247.83
-        })
-        setWalletBalance(newWallet.balance)
-      }
+    // Transactions
+    const storedTx: Transaction[] = JSON.parse(localStorage.getItem('ghost-transactions') || '[]')
+    setTransactions(storedTx)
 
-      setTransactions(transactionsData as unknown as Transaction[])
-      
-      // A simple way to get a dynamic number of active agents
-      const agentCount = new Set(transactionsData.map(tx => tx.agentId)).size
-      setActiveAgents(agentCount > 0 ? agentCount : 42)
-
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
-      toast.error('Failed to load dashboard data.')
-    }
-  }, [user.id])
+    const agentCount = new Set(storedTx.map(tx => tx.agentId)).size
+    setActiveAgents(agentCount > 0 ? agentCount : 42)
+  }, [])
 
   useEffect(() => {
     fetchDashboardData()
@@ -117,18 +98,28 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
     const interval = setInterval(async () => {
       const mockTx = generateMockTransaction()
-      const newTransaction = await blink.db.transactions.create({
+      const newTransaction: Transaction = {
+        id: crypto.randomUUID(),
         ...mockTx,
-        userId: user.id,
-      })
+        createdAt: new Date().toISOString(),
+        time: mockTx.time,
+        agentId: mockTx.agentId,
+        type: 'earning',
+      } as Transaction
+
       const newBalance = walletBalance + newTransaction.amount
-      await blink.db.wallets.update(user.id, { balance: newBalance })
-      setTransactions(prev => [newTransaction as unknown as Transaction, ...prev.slice(0, 49)])
+
+      // Persist to localStorage
+      const updatedTx = [newTransaction, ...transactions.slice(0, 49)]
+      localStorage.setItem('ghost-transactions', JSON.stringify(updatedTx))
+      localStorage.setItem('ghost-wallet-balance', newBalance.toString())
+
+      setTransactions(updatedTx)
       setWalletBalance(newBalance)
     }, 3000 + Math.random() * 4000) // 3-7 seconds
 
     return () => clearInterval(interval)
-  }, [autoMode, user.id, walletBalance])
+  }, [autoMode, walletBalance])
 
   // Agent activation sequence
   const activateAgents = useCallback(async () => {
@@ -157,13 +148,23 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         
         for (let i = 0; i < numTransactions; i++) {
           const mockTx = generateMockTransaction()
-          const newTransaction = await blink.db.transactions.create({
+          const newTransaction: Transaction = {
+            id: crypto.randomUUID(),
             ...mockTx,
-            userId: user.id,
-          })
+            createdAt: new Date().toISOString(),
+            time: mockTx.time,
+            agentId: mockTx.agentId,
+            type: 'earning',
+          } as Transaction
+
           const newBalance = walletBalance + newTransaction.amount
-          await blink.db.wallets.update(user.id, { balance: newBalance })
-          setTransactions(prev => [newTransaction as unknown as Transaction, ...prev.slice(0, 49)])
+
+          // Persist to localStorage
+          const updatedTx = [newTransaction, ...transactions.slice(0, 49)]
+          localStorage.setItem('ghost-transactions', JSON.stringify(updatedTx))
+          localStorage.setItem('ghost-wallet-balance', newBalance.toString())
+
+          setTransactions(updatedTx)
           setWalletBalance(newBalance)
           await new Promise(resolve => setTimeout(resolve, 200))
         }
@@ -186,7 +187,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         },
       })
     }, 1000)
-  }, [user.id, walletBalance])
+  }, [walletBalance])
 
   const handleLogout = () => {
     toast.success('Ghost session terminated 👻', {
