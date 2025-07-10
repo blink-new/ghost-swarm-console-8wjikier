@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import SettingsDialog from './SettingsDialog'
+import AgentLeaderboard, { Agent } from './AgentLeaderboard'
 
 interface Transaction {
   id: string
@@ -36,21 +37,24 @@ interface DashboardProps {
 }
 
 const agentNames = [
-  'RefundBot', 'CodeFlip', 'CouponHunter', 'PriceTracker', 'DataMiner',
-  'TaskBot', 'ScrapeGhost', 'APIHunter', 'WebCrawler', 'AutoBidder',
-  'FlipBot', 'ArbitragePro', 'DealHunter', 'DiscountBot', 'CashBot'
+  'AlphaBot', 'BetaFlux', 'GammaWave', 'DeltaCore', 'EpsilonAI', 'ZetaBot', 'EtaNet', 'ThetaMind',
+  'IotaSynergy', 'KappaAI', 'LambdaCore', 'MuNet', 'NuFlux', 'XiBot', 'OmicronAI', 'PiWave',
+  'RhoSynergy', 'SigmaMind', 'TauBot', 'UpsilonNet', 'PhiFlux', 'ChiCore', 'PsiAI', 'OmegaWave'
 ]
 
-const generateMockTransaction = (): Omit<Transaction, 'id' | 'createdAt' | 'userId'> => {
-  const agentName = agentNames[Math.floor(Math.random() * agentNames.length)]
-  const agentId = `${agentName}_${Math.floor(Math.random() * 99) + 1}`
+const moneyMakingMethods = [
+  'Crypto Arbitrage', 'Stock Micro-trading', 'NFT Flipping', 'Ad-Revenue Farming', 'E-commerce Automation',
+  'Lead Generation', 'Content Creation', 'Data Annotation', 'Bug Bounty Hunting', 'Affiliate Marketing'
+]
+
+const generateMockTransaction = (agent: Agent): Omit<Transaction, 'id' | 'createdAt'> => {
   const amount = Math.random() * 2 + 0.01 // $0.01 to $2.00
   
   return {
     amount: Math.round(amount * 100) / 100,
-    source: agentName,
+    source: agent.method,
     time: new Date().toLocaleTimeString(),
-    agentId,
+    agentId: agent.id,
     type: 'earning',
   }
 }
@@ -61,7 +65,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [isActivating, setIsActivating] = useState(false)
   const [autoMode, setAutoMode] = useState(false)
   const [activationProgress, setActivationProgress] = useState(0)
-  const [activeAgents, setActiveAgents] = useState(0)
+  const [agents, setAgents] = useState<Agent[]>([])
   const [showSettings, setShowSettings] = useState(false)
   const [settings, setSettings] = useState(() => {
     const savedSettings = localStorage.getItem('ghost-swarm-settings')
@@ -84,8 +88,20 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     const storedTx: Transaction[] = JSON.parse(localStorage.getItem('ghost-transactions') || '[]')
     setTransactions(storedTx)
 
-    const agentCount = new Set(storedTx.map(tx => tx.agentId)).size
-    setActiveAgents(agentCount > 0 ? agentCount : 42)
+    // Agents
+    const storedAgents: Agent[] = JSON.parse(localStorage.getItem('ghost-agents') || '[]')
+    if (storedAgents.length > 0) {
+      setAgents(storedAgents)
+    } else {
+      const initialAgents = Array.from({ length: 42 }, (_, i) => ({
+        id: `agent_${i}`,
+        name: `${agentNames[i % agentNames.length]}${i}`,
+        earnings: 0,
+        method: 'Idle'
+      }))
+      setAgents(initialAgents)
+      localStorage.setItem('ghost-agents', JSON.stringify(initialAgents))
+    }
   }, [])
 
   useEffect(() => {
@@ -96,37 +112,31 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   useEffect(() => {
     if (!autoMode) return
 
-    const interval = setInterval(async () => {
-      const mockTx = generateMockTransaction()
-      const newTransaction: Transaction = {
-        id: crypto.randomUUID(),
-        ...mockTx,
-        createdAt: new Date().toISOString(),
-        time: mockTx.time,
-        agentId: mockTx.agentId,
-        type: 'earning',
-      } as Transaction
+    const interval = setInterval(() => {
+      setAgents(prevAgents => {
+        const activeAgents = prevAgents.filter(a => a.method !== 'Idle')
+        if (activeAgents.length === 0) return prevAgents
 
-      const newBalance = walletBalance + newTransaction.amount
+        const agentToUpdate = activeAgents[Math.floor(Math.random() * activeAgents.length)]
+        const transaction = generateMockTransaction(agentToUpdate)
+        
+        agentToUpdate.earnings += transaction.amount
+        setWalletBalance(prev => prev + transaction.amount)
+        setTransactions(prevTx => [transaction as unknown as Transaction, ...prevTx.slice(0, 49)])
 
-      // Persist to localStorage
-      const updatedTx = [newTransaction, ...transactions.slice(0, 49)]
-      localStorage.setItem('ghost-transactions', JSON.stringify(updatedTx))
-      localStorage.setItem('ghost-wallet-balance', newBalance.toString())
-
-      setTransactions(updatedTx)
-      setWalletBalance(newBalance)
+        return [...prevAgents]
+      })
     }, 3000 + Math.random() * 4000) // 3-7 seconds
 
     return () => clearInterval(interval)
-  }, [autoMode, walletBalance])
+  }, [autoMode])
 
   // Agent activation sequence
   const activateAgents = useCallback(async () => {
     setIsActivating(true)
     setActivationProgress(0)
 
-    toast.success('👻 Deploying 100 ghost agents...', {
+    toast.success('👻 Deploying 100 new agents...', {
       style: {
         background: '#0f172a',
         color: '#00ff9f',
@@ -140,6 +150,15 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       setActivationProgress(i)
     }
 
+    const newAgents = Array.from({ length: 100 }, (_, i) => ({
+      id: `agent_${agents.length + i}`,
+      name: `${agentNames[(agents.length + i) % agentNames.length]}${agents.length + i}`,
+      earnings: 0,
+      method: 'Searching...'
+    }))
+
+    setAgents(prev => [...prev, ...newAgents])
+
     // Generate transactions for 60 seconds
     const endTime = Date.now() + 60000
     const generateTransactions = async () => {
@@ -147,25 +166,20 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         const numTransactions = Math.floor(Math.random() * 4) + 2 // 2-5 transactions
         
         for (let i = 0; i < numTransactions; i++) {
-          const mockTx = generateMockTransaction()
-          const newTransaction: Transaction = {
-            id: crypto.randomUUID(),
-            ...mockTx,
-            createdAt: new Date().toISOString(),
-            time: mockTx.time,
-            agentId: mockTx.agentId,
-            type: 'earning',
-          } as Transaction
+          setAgents(prevAgents => {
+            const agentToUpdate = prevAgents[Math.floor(Math.random() * prevAgents.length)]
+            if (!agentToUpdate.method || agentToUpdate.method === 'Searching...' || agentToUpdate.method === 'Idle') {
+              agentToUpdate.method = moneyMakingMethods[Math.floor(Math.random() * moneyMakingMethods.length)]
+            }
 
-          const newBalance = walletBalance + newTransaction.amount
+            const transaction = generateMockTransaction(agentToUpdate)
+            agentToUpdate.earnings += transaction.amount
 
-          // Persist to localStorage
-          const updatedTx = [newTransaction, ...transactions.slice(0, 49)]
-          localStorage.setItem('ghost-transactions', JSON.stringify(updatedTx))
-          localStorage.setItem('ghost-wallet-balance', newBalance.toString())
+            setWalletBalance(prev => prev + transaction.amount)
+            setTransactions(prevTx => [transaction as unknown as Transaction, ...prevTx.slice(0, 49)])
 
-          setTransactions(updatedTx)
-          setWalletBalance(newBalance)
+            return [...prevAgents]
+          })
           await new Promise(resolve => setTimeout(resolve, 200))
         }
         
@@ -174,12 +188,11 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     }
 
     generateTransactions()
-    setActiveAgents(prev => prev + 100)
     
     setTimeout(() => {
       setIsActivating(false)
       setActivationProgress(0)
-      toast.success('✨ Agent deployment complete!', {
+      toast.success('✨ Agent deployment complete! Swarm is active.', {
         style: {
           background: '#0f172a',
           color: '#00ff9f',
@@ -187,7 +200,13 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         },
       })
     }, 1000)
-  }, [walletBalance])
+  }, [agents])
+
+  useEffect(() => {
+    localStorage.setItem('ghost-wallet-balance', walletBalance.toString())
+    localStorage.setItem('ghost-transactions', JSON.stringify(transactions))
+    localStorage.setItem('ghost-agents', JSON.stringify(agents))
+  }, [walletBalance, transactions, agents])
 
   const handleLogout = () => {
     toast.success('Ghost session terminated 👻', {
@@ -227,7 +246,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2 text-sm text-slate-400">
               <Users className="w-4 h-4" />
-              <span>{activeAgents} Active Agents</span>
+              <span>{agents.length} Active Agents</span>
             </div>
             <Button
               variant="ghost"
@@ -369,7 +388,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-400">Total Agents</span>
-                  <span className="text-green-400 font-semibold">{activeAgents}</span>
+                  <span className="text-green-400 font-semibold">{agents.length}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-400">Success Rate</span>
@@ -391,6 +410,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </CardContent>
           </Card>
         </div>
+        <AgentLeaderboard agents={agents} />
       </div>
       <SettingsDialog 
         open={showSettings} 
