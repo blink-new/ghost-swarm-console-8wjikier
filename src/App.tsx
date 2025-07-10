@@ -3,35 +3,27 @@ import { useState, useEffect } from 'react'
 import LoginScreen from './components/LoginScreen'
 import Dashboard from './components/Dashboard'
 import { ThemeProvider } from './components/ThemeProvider'
-
-const USER = {
-  email: 'jenniebell@outlook.com.au',
-  password: 'YellowFrog25'
-}
+import { blink } from './blink/client'
+import type { User } from '@blinkdotnew/sdk'
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Check if user is already logged in
-    const authStatus = localStorage.getItem('ghost-swarm-auth')
-    if (authStatus === 'true') {
-      setIsAuthenticated(true)
-    }
+    const unsubscribe = blink.auth.onAuthStateChanged((state) => {
+      setUser(state.user)
+      setIsLoading(state.isLoading)
+    })
+    return unsubscribe
   }, [])
 
-  const handleLogin = (email: string, password: string) => {
-    if (email === USER.email && password === USER.password) {
-      setIsAuthenticated(true)
-      localStorage.setItem('ghost-swarm-auth', 'true')
-      return true
-    }
-    return false
-  }
-
-  const handleLogout = () => {
-    setIsAuthenticated(false)
-    localStorage.removeItem('ghost-swarm-auth')
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <div className="w-16 h-16 border-4 border-green-400 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    )
   }
 
   return (
@@ -40,23 +32,11 @@ function App() {
         <Routes>
           <Route 
             path="/login" 
-            element={
-              isAuthenticated ? (
-                <Navigate to="/dashboard" replace />
-              ) : (
-                <LoginScreen onLogin={handleLogin} />
-              )
-            } 
+            element={user ? <Navigate to="/dashboard" replace /> : <LoginScreen />} 
           />
           <Route 
             path="/dashboard" 
-            element={
-              isAuthenticated ? (
-                <Dashboard onLogout={handleLogout} />
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            } 
+            element={user ? <Dashboard user={user} /> : <Navigate to="/login" replace />} 
           />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>

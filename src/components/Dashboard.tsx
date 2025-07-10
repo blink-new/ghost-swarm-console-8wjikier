@@ -7,7 +7,6 @@ import { Separator } from '@/components/ui/separator'
 import { 
   Ghost, 
   LogOut, 
-
   DollarSign, 
   Activity, 
   Bot, 
@@ -19,6 +18,8 @@ import {
   WifiOff
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { blink } from '../blink/client'
+import type { User } from '@blinkdotnew/sdk'
 
 interface Transaction {
   id: string
@@ -27,53 +28,93 @@ interface Transaction {
   time: string
   agentId: string
   type: 'earning' | 'activation'
+  createdAt: string
 }
 
 interface DashboardProps {
-  onLogout: () => void
+  user: User
 }
 
 const agentNames = [
   'RefundBot', 'CodeFlip', 'CouponHunter', 'PriceTracker', 'DataMiner',
   'TaskBot', 'ScrapeGhost', 'APIHunter', 'WebCrawler', 'AutoBidder',
   'FlipBot', 'ArbitragePro', 'DealHunter', 'DiscountBot', 'CashBot'
-]
+];
 
-const generateMockTransaction = (): Transaction => {
-  const agentName = agentNames[Math.floor(Math.random() * agentNames.length)]
-  const agentId = `${agentName}_${Math.floor(Math.random() * 99) + 1}`
-  const amount = Math.random() * 2 + 0.01 // $0.01 to $2.00
+const generateMockTransaction = (): Omit<Transaction, 'id' | 'createdAt' | 'userId'> => {
+  const agentName = agentNames[Math.floor(Math.random() * agentNames.length)];
+  const agentId = `${agentName}_${Math.floor(Math.random() * 99) + 1}`;
+  const amount = Math.random() * 2 + 0.01; // $0.01 to $2.00
   
   return {
-    id: `tx_${Date.now()}_${Math.random()}`,
     amount: Math.round(amount * 100) / 100,
     source: agentName,
     time: new Date().toLocaleTimeString(),
     agentId,
-    type: 'earning'
-  }
+    type: 'earning',
+  };
 }
 
-export default function Dashboard({ onLogout }: DashboardProps) {
-  const [walletBalance, setWalletBalance] = useState(1247.83)
+export default function Dashboard({ user }: DashboardProps) {
+  const [walletBalance, setWalletBalance] = useState(0)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isActivating, setIsActivating] = useState(false)
   const [autoMode, setAutoMode] = useState(false)
   const [activationProgress, setActivationProgress] = useState(0)
-  const [activeAgents, setActiveAgents] = useState(42)
+  const [activeAgents, setActiveAgents] = useState(0)
+
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      const [walletData, transactionsData] = await Promise.all([
+        blink.db.wallets.list({ where: { userId: user.id }, limit: 1 }),
+        blink.db.transactions.list({ where: { userId: user.id }, orderBy: { createdAt: 'desc' }, limit: 50 })
+      ])
+
+      if (walletData.length > 0) {
+        setWalletBalance(walletData[0].balance)
+      } else {
+        // Create a new wallet if one doesn't exist
+        const newWallet = await blink.db.wallets.create({
+          userId: user.id,
+          balance: 1247.83
+        })
+        setWalletBalance(newWallet.balance)
+      }
+
+      setTransactions(transactionsData as unknown as Transaction[])
+      
+      // A simple way to get a dynamic number of active agents
+      const agentCount = new Set(transactionsData.map(tx => tx.agentId)).size
+      setActiveAgents(agentCount > 0 ? agentCount : 42)
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error)
+      toast.error('Failed to load dashboard data.')
+    }
+  }, [user.id])
+
+  useEffect(() => {
+    fetchDashboardData()
+  }, [fetchDashboardData])
 
   // Auto-earnings mode
   useEffect(() => {
     if (!autoMode) return
 
-    const interval = setInterval(() => {
-      const transaction = generateMockTransaction()
-      setTransactions(prev => [transaction, ...prev.slice(0, 49)]) // Keep last 50
-      setWalletBalance(prev => prev + transaction.amount)
+    const interval = setInterval(async () => {
+      const mockTx = generateMockTransaction()
+      const newTransaction = await blink.db.transactions.create({
+        ...mockTx,
+        userId: user.id,
+      })
+      const newBalance = walletBalance + newTransaction.amount
+      await blink.db.wallets.update(user.id, { balance: newBalance })
+      setTransactions(prev => [newTransaction as unknown as Transaction, ...prev.slice(0, 49)])
+      setWalletBalance(newBalance)
     }, 3000 + Math.random() * 4000) // 3-7 seconds
 
     return () => clearInterval(interval)
-  }, [autoMode])
+  }, [autoMode, user.id, walletBalance])
 
   // Agent activation sequence
   const activateAgents = useCallback(async () => {
@@ -101,9 +142,15 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         const numTransactions = Math.floor(Math.random() * 4) + 2 // 2-5 transactions
         
         for (let i = 0; i < numTransactions; i++) {
-          const transaction = generateMockTransaction()
-          setTransactions(prev => [transaction, ...prev.slice(0, 49)])
-          setWalletBalance(prev => prev + transaction.amount)
+          const mockTx = generateMockTransaction()
+          const newTransaction = await blink.db.transactions.create({
+            ...mockTx,
+            userId: user.id,
+          })
+          const newBalance = walletBalance + newTransaction.amount
+          await blink.db.wallets.update(user.id, { balance: newBalance })
+          setTransactions(prev => [newTransaction as unknown as Transaction, ...prev.slice(0, 49)])
+          setWalletBalance(newBalance)
           await new Promise(resolve => setTimeout(resolve, 200))
         }
         
@@ -125,13 +172,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         },
       })
     }, 1000)
-  }, [])
-
-  // Initialize with some mock data
-  useEffect(() => {
-    const initialTransactions = Array.from({ length: 8 }, () => generateMockTransaction())
-    setTransactions(initialTransactions)
-  }, [])
+  }, [user.id, walletBalance])
 
   const handleLogout = () => {
     toast.success('Ghost session terminated 👻', {
@@ -141,7 +182,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         border: '1px solid #ff0080',
       },
     })
-    onLogout()
+    blink.auth.logout()
   }
 
   return (
@@ -254,7 +295,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                       <div className="text-sm text-slate-300">{tx.agentId}</div>
                       <div className="text-xs text-slate-500 flex items-center">
                         <Clock className="w-3 h-3 mr-1" />
-                        {tx.time}
+                        {new Date(tx.createdAt).toLocaleTimeString()}
                       </div>
                     </div>
                   </div>
